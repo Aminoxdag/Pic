@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>تطبيق مثبت الصور والفيديو - حماية اللمس والرجوع</title>
+    <!-- Tailwind CSS للواجهات -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons للأيقونات -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* منع حركات السحب الافتراضية والتكبير على الهواتف */
+        html, body {
+            overflow: hidden;
+            overscroll-behavior: none;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            background-color: #0b0f19;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        
+        /* إخفاء شريط التمرير */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+
+        /* حركات التلاشي السلسة والمخصصة للظهور التفاعلي */
+        .fade-transition {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        /* تأثير نبضي خفيف عند اكتمال الظهور */
+        .pulse-active {
+            animation: pulse-glow 1.5s infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 0 15px 5px rgba(239, 68, 68, 0.2); }
+        }
+    </style>
+</head>
+<body class="text-gray-100 flex flex-col justify-between h-screen">
+
+    <!-- الشاشة الرئيسية لإدخال وتحديد الصورة أو الفيديو -->
+    <div id="setup-screen" class="flex-1 flex flex-col items-center justify-center p-6 z-10 transition-opacity duration-500 overflow-y-auto">
+        <div class="max-w-md w-full bg-gray-900/80 border border-gray-800 rounded-2xl p-8 backdrop-blur-xl shadow-2xl text-center space-y-6">
+            
+            <div class="flex justify-center">
+                <div class="p-4 bg-blue-600/10 rounded-2xl border border-blue-500/20">
+                    <i data-lucide="shield-alert" class="w-12 h-12 text-blue-400"></i>
+                </div>
+            </div>
+
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-white">مثبّت الشاشة الفولاذي</h1>
+                <p class="text-sm text-gray-400 mt-2">احمِ صورك وفيديوهاتك من اللمس العشوائي، حركة السحب، وإيماءات نظام الهاتف للرجوع للخلف.</p>
+            </div>
+
+            <!-- أزرار الاختيار والتحميل -->
+            <div class="space-y-3 pt-2">
+                <label class="flex flex-col items-center justify-center border-2 border-dashed border-gray-700 hover:border-blue-500 rounded-xl p-6 cursor-pointer bg-gray-950/50 hover:bg-gray-950 transition group">
+                    <i data-lucide="image" class="w-8 h-8 text-gray-500 group-hover:text-blue-400 transition mb-2"></i>
+                    <span class="text-sm font-medium text-gray-300">اختر صورة أو فيديو من الألبوم</span>
+                    <input type="file" id="media-input" accept="image/*,video/*" class="hidden" onchange="handleFileSelect(event)">
+                </label>
+
+                <div class="text-xs text-gray-500 py-1">أو جرّب عينة سريعة:</div>
+                <button onclick="loadSample()" class="w-full py-2.5 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl font-medium text-sm transition flex items-center justify-center gap-2 border border-gray-700">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+                    عرض عينة تجريبية
+                </button>
+            </div>
+
+            <!-- تعليمات الاستخدام والأمان المحدثة -->
+            <div class="bg-gray-950/60 rounded-xl p-4 text-right text-xs text-gray-400 space-y-2 border border-gray-800/80">
+                <div class="font-semibold text-gray-300 flex items-center gap-1.5 mb-1 text-sm">
+                    <i data-lucide="info" class="w-4 h-4 text-blue-400"></i>
+                    طريقة الاستخدام والحماية:
+                </div>
+                <p>1. اختر الملف واضغط على زر القفل في أعلى اليمين لتأمين الشاشة.</p>
+                <p>2. <strong class="text-red-400">حظر الرجوع:</strong> حتى وإن سحب الطفل حافة الشاشة للرجوع للخلف، سيمنعه التطبيق ويبقيه داخل الصورة.</p>
+                <p>3. <strong class="text-amber-400">طريقة فك القفل:</strong> اضغط ضغطاً مطولاً مستمراً في أي مكان على الشاشة لمدة ثانية ونصف حتى يظهر الزر في أعلى اليمين، ثم انقر عليه لفك القفل.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- شاشة العرض الكاملة (Full Screen Viewer) -->
+    <div id="viewer-container" class="fixed inset-0 w-full h-full bg-black hidden z-40 select-none overflow-hidden touch-none">
+        
+        <!-- الحاوية الأساسية للصورة أو الفيديو -->
+        <div class="w-full h-full flex items-center justify-center">
+            <img id="viewer-image" class="w-full h-full object-contain pointer-events-none hidden" alt="مثبت الصورة">
+            <video id="viewer-video" class="w-full h-full object-contain pointer-events-none hidden" loop playsinline muted></video>
+        </div>
+
+        <!-- الطبقة الشفافة الكلية التي تصطاد وتمنع اللمس عند تفعيل القفل -->
+        <div id="touch-blocker" class="absolute inset-0 z-40 hidden touch-none select-none" style="background: rgba(0,0,0,0.001);"></div>
+
+        <!-- زر القفل العلوي العائم (موضع أعلى اليمين وحجم وسط ويختفي تماماً) -->
+        <div id="lock-overlay" class="absolute top-4 right-4 z-50 fade-transition opacity-100 flex flex-col items-end gap-1.5">
+            <button id="lock-btn" onclick="toggleLock(event)" class="w-12 h-12 rounded-full bg-black/80 border border-white/20 backdrop-blur-md flex items-center justify-center text-white active:scale-95 transition-transform duration-100 shadow-lg relative" style="-webkit-tap-highlight-color: transparent;">
+                <i id="lock-icon" data-lucide="unlock" class="w-5 h-5 text-green-400"></i>
+                
+                <!-- دائرة التقدم البصري أثناء الضغط المطول على الشاشة للظهور -->
+                <svg class="absolute inset-0 w-full h-full transform -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+                    <circle id="hold-progress-bar" cx="50" cy="50" r="45" stroke="currentColor" stroke-width="5" fill="transparent" class="text-red-500/80" stroke-dasharray="283" stroke-dashoffset="283" />
+                </svg>
+            </button>
+            <span id="lock-status-text" class="text-[10px] bg-black/80 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/10 text-white font-medium shadow-md">
+                تأمين الشاشة
+            </span>
+        </div>
+
+        <!-- زر الرجوع (يظهر في أعلى اليسار فقط عند عدم القفل ويختفي تماماً عند القفل) -->
+        <button id="back-btn" onclick="exitViewer(event)" class="absolute top-4 left-4 z-50 w-10 h-10 rounded-full bg-black/60 border border-white/10 backdrop-blur-md flex items-center justify-center text-white active:scale-90 transition shadow-md fade-transition">
+            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+        </button>
+    </div>
+
+    <!-- رسائل التنبيهات المخصصة -->
+    <div id="custom-toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-800 text-gray-200 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 z-50 opacity-0 pointer-events-none transition-all duration-300 transform translate-y-4">
+        <i id="toast-icon" data-lucide="info" class="w-5 h-5 text-blue-400"></i>
+        <span id="toast-message" class="text-sm font-medium">تم تفعيل مثبت اللمس!</span>
+    </div>
+
+    <script>
+        // تهيئة أيقونات Lucide
+        lucide.createIcons();
+
+        // متغيرات الحالة
+        let isLocked = false;
+        let currentMediaType = null;
+        let fileUrl = null;
+
+        // متغيرات الضغط المطول لإظهار القفل
+        let screenHoldTimer = null;
+        let screenHoldProgressInterval = null;
+        const holdTargetDuration = 1500; // 1.5 ثانية للضغط المطول لإظهار الزر
+        let currentScreenHoldTime = 0;
+        let isRevealed = false;
+        let hideRevealedTimeout = null;
+
+        // عناصر الواجهة الأساسية
+        const setupScreen = document.getElementById('setup-screen');
+        const viewerContainer = document.getElementById('viewer-container');
+        const viewerImage = document.getElementById('viewer-image');
+        const viewerVideo = document.getElementById('viewer-video');
+        const touchBlocker = document.getElementById('touch-blocker');
+        const lockOverlay = document.getElementById('lock-overlay');
+        const lockBtn = document.getElementById('lock-btn');
+        const lockIcon = document.getElementById('lock-icon');
+        const lockStatusText = document.getElementById('lock-status-text');
+        const backBtn = document.getElementById('back-btn');
+        const progressCircle = document.getElementById('hold-progress-bar');
+
+        // تعامل مع اختيار الملف
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (fileUrl) {
+                URL.revokeObjectURL(fileUrl);
+            }
+
+            fileUrl = URL.createObjectURL(file);
+            const fileType = file.type;
+
+            if (fileType.startsWith('image/')) {
+                currentMediaType = 'image';
+                viewerImage.src = fileUrl;
+                viewerImage.classList.remove('hidden');
+                viewerVideo.classList.add('hidden');
+                viewerVideo.pause();
+                enterViewer();
+            } else if (fileType.startsWith('video/')) {
+                currentMediaType = 'video';
+                viewerVideo.src = fileUrl;
+                viewerVideo.classList.remove('hidden');
+                viewerImage.classList.add('hidden');
+                viewerVideo.muted = true;
+                viewerVideo.play().catch(err => console.log(err));
+                enterViewer();
+            } else {
+                showToast("صيغة غير مدعومة.", "error");
+            }
+        }
+
+        // تشغيل عينة تجريبية
+        function loadSample() {
+            currentMediaType = 'image';
+            viewerImage.src = "https://images.unsplash.com/photo-1513151233558-d860c5398176?q=80&w=1000&auto=format&fit=crop";
+            viewerImage.classList.remove('hidden');
+            viewerVideo.classList.add('hidden');
+            viewerVideo.pause();
+            enterViewer();
+        }
+
+        // دخول شاشة العرض الكاملة
+        function enterViewer() {
+            setupScreen.classList.add('opacity-0');
+            setTimeout(() => {
+                setupScreen.classList.add('hidden');
+                viewerContainer.classList.remove('hidden');
+                requestFullScreen(viewerContainer);
+
+                isLocked = false;
+                isRevealed = false;
+                updateUIState();
+
+                // دفع حالة جديدة في تاريخ المتصفح لمنع الخروج عند الإيماءات الخلفية
+                history.pushState({ inViewer: true }, "");
+            }, 300);
+        }
+
+        // اعتراض زر الرجوع الخاص بالنظام أو المتصفح لمنع الخروج أثناء القفل
+        window.addEventListener('popstate', function(event) {
+            // إذا كنا بالفعل في صفحة الإعدادات، دع المتصفح يرجع طبيعياً
+            if (viewerContainer.classList.contains('hidden')) {
+                return;
+            }
+
+            if (isLocked) {
+                // إعادة دفع الحالة لمنع المتصفح من الرجوع للخلف والبقاء في الصورة
+                history.pushState({ inViewer: true }, "");
+                showToast("الرجوع معطل! قم بإلغاء قفل الشاشة أولاً.", "warn");
+                
+                // إظهار تنبيه بصري سريع للمستخدم ليعرف كيفية فك القفل
+                triggerTemporaryReveal();
+            } else {
+                // إذا لم يكن هناك قفل، نخرج بشكل طبيعي إلى صفحة الإعدادات
+                exitViewer(null, true);
+            }
+        });
+
+        // خروج من شاشة العرض
+        function exitViewer(event, fromPopstate = false) {
+            if (event) event.stopPropagation();
+            if (isLocked) return;
+
+            viewerVideo.pause();
+            exitFullScreen();
+
+            viewerContainer.classList.add('hidden');
+            setupScreen.classList.remove('hidden');
+            setTimeout(() => {
+                setupScreen.classList.remove('opacity-0');
+            }, 50);
+
+            // تنظيف تاريخ المتصفح إذا تم الخروج بضغط الزر اليدوي
+            if (!fromPopstate) {
+                if (history.state && history.state.inViewer) {
+                    history.back();
+                }
+            }
+        }
+
+        // تفعيل أو تعطيل القفل
+        function toggleLock(event) {
+            if (event) event.stopPropagation();
+
+            if (!isLocked) {
+                isLocked = true;
+                isRevealed = false;
+                showToast("تم القفل! اضغط مطولاً على الشاشة لإظهاره مجدداً.");
+                updateUIState();
+            } else {
+                isLocked = false;
+                isRevealed = false;
+                showToast("تم إلغاء قفل مثبت اللمس!");
+                updateUIState();
+            }
+        }
+
+        // تحديث حالة الواجهات والظهور حسب حالة القفل
+        function updateUIState() {
+            setProgress(0);
+            if (isLocked) {
+                // وضع القفل: نخفي كل شيء تماماً
+                lockOverlay.style.opacity = "0";
+                lockOverlay.style.pointerEvents = "none";
+                lockBtn.classList.remove('pulse-active');
+                
+                backBtn.style.opacity = "0";
+                backBtn.style.pointerEvents = "none";
+
+                lockIcon.innerHTML = `<path d="M15 22H9a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3z"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/>`;
+                lockIcon.classList.remove('text-green-400');
+                lockIcon.classList.add('text-red-500');
+                lockStatusText.innerText = "انقر لإلغاء القفل";
+                lockStatusText.className = "text-[10px] bg-red-600/90 backdrop-blur-sm px-2 py-0.5 rounded-full border border-red-500/20 text-white font-medium shadow-md";
+
+                // حجب اللمس التام
+                touchBlocker.classList.remove('hidden');
+                enableStrictBlock();
+            } else {
+                // وضع إلغاء القفل: واجهة عادية ظاهرة
+                lockOverlay.style.opacity = "1";
+                lockOverlay.style.pointerEvents = "auto";
+                lockBtn.classList.remove('pulse-active');
+                
+                backBtn.style.opacity = "1";
+                backBtn.style.pointerEvents = "auto";
+
+                lockIcon.innerHTML = `<path d="M15 22H9a3 3 0 0 1-3-3v-8a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3z"/><path d="M7 10V7a5 5 0 0 1 9.9-1"/>`;
+                lockIcon.classList.remove('text-red-500');
+                lockIcon.classList.add('text-green-400');
+                lockStatusText.innerText = "تأمين الشاشة";
+                lockStatusText.className = "text-[10px] bg-black/80 backdrop-blur-sm px-2 py-0.5 rounded-full border border-white/10 text-white font-medium shadow-md";
+
+                touchBlocker.classList.add('hidden');
+                disableStrictBlock();
+
+                if (currentMediaType === 'video') {
+                    viewerVideo.muted = false;
+                }
+            }
+            lucide.createIcons();
+        }
+
+        // تحديث شريط الدائرة الملونة أثناء الضغط المطول
+        function setProgress(percent) {
+            const radius = 45;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (percent / 100) * circumference;
+            progressCircle.style.strokeDashoffset = offset;
+        }
+
+        /* ميكانيكية الضغط المطول في أي مكان على الشاشة لإظهار القفل */
+        function handleScreenHoldStart(e) {
+            if (!isLocked || isRevealed) return;
+            
+            currentScreenHoldTime = 0;
+            setProgress(0);
+            
+            lockOverlay.style.transition = `opacity ${holdTargetDuration}ms linear, transform 0.2s ease`;
+            lockOverlay.style.opacity = "0.75";
+            lockOverlay.style.transform = "scale(1.05)";
+
+            screenHoldProgressInterval = setInterval(() => {
+                currentScreenHoldTime += 50;
+                let pct = (currentScreenHoldTime / holdTargetDuration) * 100;
+                if (pct > 100) pct = 100;
+                setProgress(pct);
+            }, 50);
+
+            screenHoldTimer = setTimeout(() => {
+                triggerRevealSuccess();
+            }, holdTargetDuration);
+        }
+
+        // إلغاء كشف القفل إذا رفع المستخدم إصبعه باكراً
+        function handleScreenHoldCancel() {
+            if (!isLocked || isRevealed) return;
+
+            clearTimeout(screenHoldTimer);
+            clearInterval(screenHoldProgressInterval);
+            
+            lockOverlay.style.transition = "opacity 0.3s ease, transform 0.3s ease";
+            lockOverlay.style.opacity = "0";
+            lockOverlay.style.transform = "scale(0.9)";
+            setProgress(0);
+        }
+
+        // نجاح عملية كشف القفل بعد الضغط المطول التام
+        function triggerRevealSuccess() {
+            clearInterval(screenHoldProgressInterval);
+            isRevealed = true;
+
+            lockOverlay.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+            lockOverlay.style.opacity = "1";
+            lockOverlay.style.transform = "scale(1)";
+            lockOverlay.style.pointerEvents = "auto";
+            
+            lockBtn.classList.add('pulse-active');
+            setProgress(100);
+
+            // إخفاء الزر تلقائياً تماماً بعد 4 ثوانٍ إذا لم يقم المستخدم بالضغط عليه لفك القفل
+            clearTimeout(hideRevealedTimeout);
+            hideRevealedTimeout = setTimeout(() => {
+                if (isLocked && isRevealed) {
+                    isRevealed = false;
+                    updateUIState();
+                }
+            }, 4000);
+        }
+
+        // إظهار الزر مؤقتاً لتنبيه المستخدم عند محاولة الخروج بالخطأ
+        function triggerTemporaryReveal() {
+            if (isRevealed) return;
+            
+            lockOverlay.style.transition = "opacity 0.3s ease";
+            lockOverlay.style.opacity = "0.6";
+            
+            setTimeout(() => {
+                if (isLocked && !isRevealed) {
+                    lockOverlay.style.opacity = "0";
+                }
+            }, 2000);
+        }
+
+        // ربط أحداث اللمس بالطبقة المانعة الكلية
+        touchBlocker.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleScreenHoldStart(e);
+        }, { passive: false });
+
+        touchBlocker.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleScreenHoldCancel();
+        }, { passive: false });
+
+        touchBlocker.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        touchBlocker.addEventListener('mousedown', handleScreenHoldStart);
+        touchBlocker.addEventListener('mouseup', handleScreenHoldCancel);
+        touchBlocker.addEventListener('mouseleave', handleScreenHoldCancel);
+
+
+        // حظر ميزات السحب الافتراضية
+        function preventTouchBehavior(e) {
+            if (isLocked) {
+                e.preventDefault();
+            }
+        }
+
+        function enableStrictBlock() {
+            document.addEventListener('touchstart', preventTouchBehavior, { passive: false });
+            document.addEventListener('touchmove', preventTouchBehavior, { passive: false });
+            document.addEventListener('touchend', preventTouchBehavior, { passive: false });
+        }
+
+        function disableStrictBlock() {
+            document.removeEventListener('touchstart', preventTouchBehavior);
+            document.removeEventListener('touchmove', preventTouchBehavior);
+            document.removeEventListener('touchend', preventTouchBehavior);
+        }
+
+        // طلب ملء الشاشة الذكي (تمت إضافة الحماية لمنع الأخطاء الناتجة عن سياسة الأمان الخاصة ببعض المتصفحات)
+        function requestFullScreen(element) {
+            try {
+                if (element.requestFullscreen) {
+                    element.requestFullscreen().catch(err => {
+                        console.log("تم حظر طلب ملء الشاشة من قبل سياسة المتصفح ولكنه يعمل محلياً:", err);
+                    });
+                } else if (element.webkitRequestFullscreen) {
+                    element.webkitRequestFullscreen();
+                }
+            } catch (e) {
+                console.log("واجهة ملء الشاشة البرمجية غير مدعومة في هذه البيئة:", e);
+            }
+        }
+
+        // الخروج الآمن من وضع ملء الشاشة
+        function exitFullScreen() {
+            try {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(err => {
+                        console.log("تم حظر الخروج من ملء الشاشة:", err);
+                    });
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+            } catch (e) {
+                console.log("واجهة إلغاء ملء الشاشة البرمجية غير مدعومة:", e);
+            }
+        }
+
+        // ظهور الرسائل المنبثقة التنبيهية
+        function showToast(message, type = "info") {
+            const toast = document.getElementById('custom-toast');
+            const toastText = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+            
+            toastText.innerText = message;
+            
+            // تغيير لون الأيقونة حسب نوع التنبيه
+            if (type === "warn" || type === "error") {
+                toastIcon.innerHTML = `<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>`;
+                toastIcon.className = "w-5 h-5 text-red-500 animate-bounce";
+            } else {
+                toastIcon.innerHTML = `<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>`;
+                toastIcon.className = "w-5 h-5 text-blue-400";
+            }
+            
+            toast.classList.remove('opacity-0', 'translate-y-4', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4', 'pointer-events-none');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
